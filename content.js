@@ -19,6 +19,35 @@ class FantasyDeckBuilder {
   
   // Debug flag - set to true for verbose logging
   static DEBUG = false;
+  // Temporary: skip card metadata cache – always fetch from API, never save (set false to re-enable cache)
+  static SKIP_CARD_CACHE = false;
+
+  // Tournaments: star cap + rarity limits (1=Legendary, 2=Epic, 3=Rare, 4=Common)
+  static TOURNAMENTS = {
+    bronze: { targetStars: 19, maxRares: 0, maxEpics: 0, maxLegendaries: 0, label: 'Bronze (19⭐ common-only)' },
+    silver: { targetStars: 23, maxRares: 3, maxEpics: 0, maxLegendaries: 0, label: 'Silver (23⭐ up to 3 rares)' },
+    gold: { targetStars: 25, maxRares: Infinity, maxEpics: 2, maxLegendaries: 0, label: 'Gold (25⭐ up to 2 epics)' },
+    platinum: { targetStars: 27, maxRares: Infinity, maxEpics: 3, maxLegendaries: 1, label: 'Platinum (27⭐ up to 3 epics, 1 legendary)' },
+    diamond: { targetStars: 50, maxRares: Infinity, maxEpics: Infinity, maxLegendaries: Infinity, label: 'Diamond (unlimited)' }
+  };
+  static RARITY_MULTIPLIER = { 1: 2.5, 2: 2, 3: 1.5, 4: 1 };
+  static RARITY_LABEL = { 1: 'Leg', 2: 'Epic', 3: 'Rare', 4: '' };
+
+  /** Parse API Rarity: number 1-4 or string "Rare"/"Common" etc. Default 4 (Common). */
+  static parseRarityFromApi(value) {
+    if (value == null) return 5;
+    if (typeof value === 'number' && value >= 1 && value <= 4) return value;
+    if (typeof value === 'string') {
+      const v = value.trim().toLowerCase();
+      const n = parseInt(v, 10);
+      if (!isNaN(n) && n >= 1 && n <= 4) return n;
+      if (v === 'legendary' || v === 'leg') return 1;
+      if (v === 'epic') return 2;
+      if (v === 'rare') return 3;
+      if (v === 'common') return 4;
+    }
+    return 4;
+  }
 
   // Initialize: inject custom magic wand button
   async init() {
@@ -249,13 +278,18 @@ class FantasyDeckBuilder {
       
       const cacheResult = await chrome.storage.local.get(['cacheTimestamp', 'historicalDataCache', 'cardDataCache']);
       
-      // Tournament: 5 cards, 19 stars max (hard cap — never accept > 19)
-      finalConfig.targetStars = 19;
+      const tournament = (finalConfig.tournament || 'bronze').toLowerCase();
+      const tournConfig = FantasyDeckBuilder.TOURNAMENTS[tournament] || FantasyDeckBuilder.TOURNAMENTS.bronze;
+      finalConfig.tournament = tournament;
+      finalConfig.targetStars = tournConfig.targetStars;
       finalConfig.cardCount = 5;
-      
+      finalConfig.maxRares = tournConfig.maxRares;
+      finalConfig.maxEpics = tournConfig.maxEpics;
+      finalConfig.maxLegendaries = tournConfig.maxLegendaries;
+
       if (FantasyDeckBuilder.DEBUG) {
         console.log('⚙️ Configuration loaded:', finalConfig);
-        console.log('🎯 Target: 5 cards with 19 total stars');
+        console.log(`🎯 Tournament: ${tournConfig.label}`);
       }
 
       // Load historical data (check cache first, then fetch if needed)
@@ -286,12 +320,13 @@ class FantasyDeckBuilder {
 
       console.log('✅ Optimal deck found:');
       bestDeck.forEach((card, i) => {
-        console.log(`  ${i + 1}. ${card.name} (${card.stars}⭐) - Expected: ${card.expectedScore.toFixed(0)}`);
+        const r = FantasyDeckBuilder.RARITY_LABEL[card.rarity ?? 4] || 'Common';
+        console.log(`  ${i + 1}. ${card.name} (${card.stars}⭐ ${r}) - Expected: ${card.expectedScore.toFixed(0)}`);
       });
-
       const totalStars = bestDeck.reduce((sum, card) => sum + card.stars, 0);
       const totalExpected = bestDeck.reduce((sum, card) => sum + card.expectedScore, 0);
-      console.log(`📊 Total: ${totalStars}⭐ | Expected Score: ${totalExpected.toFixed(0)}`);
+      const rarities = bestDeck.map(c => FantasyDeckBuilder.RARITY_LABEL[c.rarity ?? 4] || 'Common').join(', ');
+      console.log(`📊 Total: ${totalStars}⭐ | Expected Score: ${totalExpected.toFixed(0)} | Rarities: [${rarities}]`);
 
       // Only clear and select cards if on deckbuilder page
       if (window.location.href.includes('/deckbuilder')) {
@@ -302,10 +337,11 @@ class FantasyDeckBuilder {
         console.log('👆 Selecting new cards...');
         await this.selectCards(bestDeck);
         
-        this.showNotification(`✅ Deck built! ${bestDeck.length} cards (${totalStars}⭐)`, 'success');
+        const deckLine = bestDeck.map(c => this._deckCardLine(c)).join(', ');
+        this.showNotification(`✅ Deck built! ${bestDeck.length} cards (${totalStars}⭐). ${deckLine}. Total expected: ${totalExpected.toFixed(0)}`, 'success', { persistent: true });
       } else {
-        // On portfolio page, just show the result
-        this.showNotification(`✅ Optimal deck calculated! ${bestDeck.length} cards (${totalStars}⭐) - Check console for details`, 'success');
+        const deckLine = bestDeck.map(c => this._deckCardLine(c)).join(', ');
+        this.showNotification(`✅ Optimal deck: ${bestDeck.length} cards (${totalStars}⭐). ${deckLine}. Total expected: ${totalExpected.toFixed(0)}`, 'success', { persistent: true });
       }
       
       console.log('🎉 Deck building complete!');
@@ -315,8 +351,14 @@ class FantasyDeckBuilder {
       
       return {
         success: true,
-        cards: bestDeck.map(c => ({ name: c.handle || c.name, stars: c.stars })),
-        totalStars
+        cards: bestDeck.map(c => ({
+          name: c.handle || c.name,
+          stars: c.stars,
+          expectedScore: c.expectedScore,
+          rarity: c.rarity
+        })),
+        totalStars,
+        totalExpected
       };
     } catch (error) {
       console.error('❌ Error building deck:', error);
@@ -336,14 +378,30 @@ class FantasyDeckBuilder {
     return result;
   }
 
-  // Show notification on page
-  showNotification(message, type = 'info') {
+  // Format one card for deck-built message: name (expectedScore) [rarity]. expectedScore is already rarity-adjusted.
+  _deckCardLine(c) {
+    const score = (c.expectedScore ?? 0).toFixed(0);
+    const label = FantasyDeckBuilder.RARITY_LABEL[c.rarity ?? 4] || '';
+    const suffix = label ? ` ${label}` : '';
+    return `${c.handle || c.name} (${score}${suffix})`;
+  }
+
+  // Show notification on page. Deck-built notifications stay until closed or next build.
+  showNotification(message, type = 'info', options = {}) {
+    const { persistent = false } = options;
+    if (persistent) {
+      document.querySelectorAll('.fantasy-deck-notification').forEach(el => el.remove());
+    }
     const notification = document.createElement('div');
+    if (persistent) notification.className = 'fantasy-deck-notification';
     notification.style.cssText = `
       position: fixed;
       top: 20px;
       right: 20px;
+      max-width: 90vw;
+      width: 360px;
       padding: 16px 20px;
+      padding-right: ${persistent ? '44px' : '20px'};
       background: ${type === 'success' ? '#1a4d1a' : type === 'error' ? '#4d1a1a' : '#1a3a4d'};
       color: ${type === 'success' ? '#7cff00' : type === 'error' ? '#ff6b6b' : '#6bb6ff'};
       border-radius: 8px;
@@ -352,15 +410,40 @@ class FantasyDeckBuilder {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 14px;
       font-weight: 500;
+      white-space: normal;
+      word-break: break-word;
       animation: slideIn 0.3s ease;
     `;
     notification.textContent = message;
-    document.body.appendChild(notification);
-
-    setTimeout(() => {
-      notification.style.animation = 'slideOut 0.3s ease';
-      setTimeout(() => notification.remove(), 300);
-    }, 3000);
+    if (persistent) {
+      const close = document.createElement('button');
+      close.setAttribute('aria-label', 'Close');
+      close.textContent = '×';
+      close.style.cssText = `
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: inherit;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        opacity: 0.8;
+      `;
+      close.addEventListener('click', () => notification.remove());
+      notification.appendChild(close);
+      document.body.appendChild(notification);
+    } else {
+      document.body.appendChild(notification);
+      setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => notification.remove(), 300);
+      }, 3000);
+    }
   }
 
   // Load historical data (consolidated method - loads cache and fetches if needed)
@@ -407,34 +490,36 @@ class FantasyDeckBuilder {
   }
 
 
-  // Load portfolio: only cardId→heroKey mapping + portfolio cardIds (for API skip + deck builder)
+  // Portfolio cache: single format { portfolioCardMeta, portfolioCardIds }.
+  // portfolioCardMeta = { [cardId]: { heroKey, rarity } }, portfolioCardIds = string[].
   async loadPortfolioCache() {
-    const result = await chrome.storage.local.get(['cardIdToHeroKeyCache', 'portfolioCardIds', 'portfolioCardsCache']);
-    if (result.cardIdToHeroKeyCache && result.portfolioCardIds?.length > 0) {
-      this.portfolioCards = result.portfolioCardIds.map(cardId => ({ cardId, heroKey: result.cardIdToHeroKeyCache[cardId] })).filter(c => c.heroKey);
+    const result = await chrome.storage.local.get(['portfolioCardMeta', 'portfolioCardIds']);
+    if (result.portfolioCardMeta && result.portfolioCardIds?.length > 0) {
+      this.portfolioCards = result.portfolioCardIds.map(cardId => {
+        const meta = result.portfolioCardMeta[cardId] || {};
+        return {
+          cardId,
+          heroKey: meta.heroKey,
+          rarity: meta.rarity ?? 4
+        };
+      }).filter(c => c.heroKey);
       if (FantasyDeckBuilder.DEBUG) {
-        console.log(`📦 Loaded ${this.portfolioCards.length} portfolio cards from cache (${Object.keys(result.cardIdToHeroKeyCache).length} id→hero mappings)`);
-      }
-    } else if (result.portfolioCardsCache?.length > 0) {
-      this.portfolioCards = result.portfolioCardsCache;
-      if (FantasyDeckBuilder.DEBUG) {
-        console.log(`📦 Loaded ${this.portfolioCards.length} portfolio cards from legacy cache`);
+        console.log(`📦 Loaded ${this.portfolioCards.length} portfolio cards from cache`);
       }
     }
   }
 
-  // Save only cardId→heroKey mapping + portfolio cardIds (no full card objects)
   async savePortfolioCache() {
-    const map = {};
+    const meta = {};
     const ids = [];
     this.portfolioCards.forEach(card => {
       if (card.cardId && card.heroKey) {
-        map[card.cardId] = card.heroKey;
+        meta[card.cardId] = { heroKey: card.heroKey, rarity: card.rarity ?? 4 };
         ids.push(card.cardId);
       }
     });
-    await chrome.storage.local.set({ cardIdToHeroKeyCache: map, portfolioCardIds: ids });
-    console.log(`💾 Saved ${ids.length} portfolio cardIds, ${Object.keys(map).length} id→hero mappings`);
+    await chrome.storage.local.set({ portfolioCardMeta: meta, portfolioCardIds: ids });
+    console.log(`💾 Saved ${ids.length} portfolio cardIds`);
   }
 
   // Helper function to parse CSV line (handles quoted fields)
@@ -602,9 +687,13 @@ class FantasyDeckBuilder {
   async scrapePortfolioCards() {
     console.log('🔍 Scraping portfolio cards from page...');
 
-    // Load portfolio cache to avoid redundant API calls (only for API optimization)
-    await this.loadPortfolioCache();
-    
+    if (!FantasyDeckBuilder.SKIP_CARD_CACHE) {
+      await this.loadPortfolioCache();
+    } else {
+      this.portfolioCards = [];
+      console.log('⚠️ Card cache disabled – fetching all metadata from API');
+    }
+
     // Find all card images on the page
     const cardImages = Array.from(document.querySelectorAll('img[alt]')).filter(img => {
       const alt = img.getAttribute('alt') || '';
@@ -619,16 +708,15 @@ class FantasyDeckBuilder {
       return [];
     }
     
-    // Create map for quick lookup (from cache to avoid redundant API calls)
+    // Create map for quick lookup (from cache when not skipped; otherwise empty so we fetch all)
     const cachedCardMap = new Map(); // cardId -> card
-    
-    this.portfolioCards.forEach(card => {
-      if (card.cardId) {
-        cachedCardMap.set(card.cardId, card);
-      }
-    });
-    
-    // Extract card IDs (deduplicate)
+    if (!FantasyDeckBuilder.SKIP_CARD_CACHE) {
+      this.portfolioCards.forEach(card => {
+        if (card.cardId) cachedCardMap.set(card.cardId, card);
+      });
+    }
+
+    // Extract card IDs (deduplicate) – when cache skipped, all cardIds need fetch
     const cardIdsToFetch = new Set();
     const cardIdToImg = new Map();
     
@@ -638,7 +726,11 @@ class FantasyDeckBuilder {
       if (!match) continue;
       
       const cardId = match[1];
-      if (!cachedCardMap.has(cardId) && !cardIdsToFetch.has(cardId)) {
+      const cached = cachedCardMap.get(cardId);
+      const heroKeyMissing = !cached || cached.heroKey == null || cached.heroKey === '' || !String(cached.heroKey).trim();
+      const rarityInvalid = !cached || cached.rarity == null || cached.rarity < 1 || cached.rarity > 4;
+      const needFetch = heroKeyMissing || rarityInvalid;
+      if (needFetch && !cardIdsToFetch.has(cardId)) {
         cardIdsToFetch.add(cardId);
         cardIdToImg.set(cardId, img);
       }
@@ -671,16 +763,19 @@ class FantasyDeckBuilder {
           const metadata = await response.json();
           const heroName = metadata.name || null;
           const heroKey = (heroName || '').toUpperCase();
-          
+          const attrs = metadata.attributes || [];
+          const rarityAttr = attrs.find(a => a.trait_type === 'Rarity');
+          const rarity = FantasyDeckBuilder.parseRarityFromApi(rarityAttr?.value) ?? 4;
+
           if (!heroName) {
             if (FantasyDeckBuilder.DEBUG) {
               console.warn(`  ⚠️ Missing data for ${cardId}: name=${heroName}`);
             }
             return null;
           }
-          
+
           fetchedCount++;
-          return { cardId, heroKey, heroName };
+          return { cardId, heroKey, heroName, rarity };
         } catch (error) {
           if (FantasyDeckBuilder.DEBUG) {
             console.error(`  ❌ Error fetching card ${cardId}:`, error);
@@ -694,7 +789,7 @@ class FantasyDeckBuilder {
       // Process results
       for (const result of results) {
         if (!result) continue;
-        cachedCardMap.set(result.cardId, { heroKey: result.heroKey });
+        cachedCardMap.set(result.cardId, { heroKey: result.heroKey, rarity: result.rarity ?? 4 });
       }
       
       // Small delay between batches to avoid overwhelming the API
@@ -721,7 +816,8 @@ class FantasyDeckBuilder {
       if (cachedCard && cachedCard.heroKey) {
         portfolioCards.push({
           cardId,
-          heroKey: cachedCard.heroKey
+          heroKey: cachedCard.heroKey,
+          rarity: cachedCard.rarity ?? 4
         });
         cachedCount++;
       } else if (cachedCard && !cachedCard.heroKey) {
@@ -733,13 +829,14 @@ class FantasyDeckBuilder {
     }
       
     console.log(`📊 Portfolio scraping: ${cachedCount} from cache, ${fetchedCount} fetched from API`);
-    
+
     // Update portfolio cards (replace with fresh scrape, but keep cache for API optimization)
     this.portfolioCards = portfolioCards;
-    
-    // Save updated portfolio to cache (for future API call optimization)
-    await this.savePortfolioCache();
-    
+
+    if (!FantasyDeckBuilder.SKIP_CARD_CACHE) {
+      await this.savePortfolioCache();
+    }
+
     const uniqueHeroes = new Set(this.portfolioCards.map(c => c.heroKey));
     console.log(`✅ Portfolio now has ${this.portfolioCards.length} cards (${uniqueHeroes.size} unique heroes)`);
     
@@ -783,12 +880,12 @@ class FantasyDeckBuilder {
       
       // Add one card entry for each available portfolio card of this hero
       for (const match of portfolioMatches) {
-        // Only add if we haven't already used this cardId
+        // Only add if we haven't already used this cardId; stars from sheet, rarity from API/cache
         if (!usedCardIdsInFilter.has(match.cardId)) {
           filteredCards.push({
             ...card,
-            // Note: element is NOT copied here - re-resolve from cardId when needed
-            cardId: match.cardId
+            cardId: match.cardId,
+            rarity: match.rarity ?? 4
           });
           usedCardIdsInFilter.add(match.cardId);
         }
@@ -797,7 +894,7 @@ class FantasyDeckBuilder {
     
     this.cards = filteredCards;
     console.log(`📊 Filtered: ${originalCount} heroes (with history) → ${this.cards.length} portfolio cards (one per owned copy)`);
-    
+
     if (this.cards.length === 0) {
       console.warn('⚠️ No matching cards found in portfolio! Make sure you have cards with historical data.');
     }
@@ -956,17 +1053,24 @@ class FantasyDeckBuilder {
   // Generate config hash for cache invalidation
   _getConfigHash(config) {
     const overridesStr = JSON.stringify(config.scoreOverrides || {});
-    return `${config.algorithm}_${overridesStr}`;
+    return `${config.algorithm}_${config.tournament || 'bronze'}_${overridesStr}`;
   }
 
   // Find best deck combination (optimized for repeated calls)
   findBestDeck(config) {
+    const tournament = (config.tournament || 'bronze').toLowerCase();
+    const tournConfig = FantasyDeckBuilder.TOURNAMENTS[tournament] || FantasyDeckBuilder.TOURNAMENTS.bronze;
+    const targetStars = config.targetStars ?? tournConfig.targetStars;
+    const targetCount = config.cardCount || 5;
+    const maxRares = config.maxRares ?? tournConfig.maxRares;
+    const maxEpics = config.maxEpics ?? tournConfig.maxEpics;
+    const maxLegendaries = config.maxLegendaries ?? tournConfig.maxLegendaries;
+
     console.log('🧮 Starting deck optimization...');
+    console.log('  Tournament:', tournConfig.label);
     console.log('  Algorithm:', config.algorithm);
     console.log('  Score overrides:', Object.keys(config.scoreOverrides || {}).length);
-    
-    const targetStars = config.targetStars || 19;
-    const targetCount = config.cardCount || 5;
+
     const configHash = this._getConfigHash(config);
     
     // Check if we can reuse cached sorted cards
@@ -983,21 +1087,19 @@ class FantasyDeckBuilder {
         // Use heroKey for lookup (primary), fallback to handle/name
         const lookupKey = (card.heroKey || card.handle || card.name).toUpperCase();
         
-        // User override (0XMAKESY: 1⭐ → override, 2+⭐ → 0; others: flat override)
+        // User override: value is base score (pre–rarity multiplier); we then apply rarity mult
         if (config.scoreOverrides && config.scoreOverrides[lookupKey] !== undefined) {
           const overrideScore = config.scoreOverrides[lookupKey];
           const effectiveScore = (lookupKey === '0XMAKESY' && card.stars !== 1) ? 0 : overrideScore;
           if (FantasyDeckBuilder.DEBUG) {
             console.log(`  🎯 ${card.handle || card.name}: Override = ${overrideScore}, effective = ${effectiveScore} (${card.stars}⭐)`);
           }
-          return {
-            ...card,
-            expectedScore: effectiveScore,
-            expectedScorePerStar: card.stars > 0 ? effectiveScore / card.stars : 0
-          };
+          const mult = FantasyDeckBuilder.RARITY_MULTIPLIER[card.rarity ?? 4] ?? 1;
+          const scoreWithRarity = effectiveScore * mult;
+          return { ...card, expectedScore: scoreWithRarity, expectedScorePerStar: card.stars > 0 ? scoreWithRarity / card.stars : 0 };
         }
-        
-        // No override (or user removed Makesy): score from history like any other hero
+
+        // No override: score from history
         let score;
         {
           // Check score cache
@@ -1014,25 +1116,26 @@ class FantasyDeckBuilder {
         if (score === null || !card.stars || card.stars === 0) {
           return null;
         }
-        
-        const scoreperstar = score / card.stars;
-        
-        return {
-          ...card,
-          expectedScore: score,
-          expectedScorePerStar: scoreperstar
-        };
-      }).filter(card => card !== null && card.expectedScore >= 0 && card.stars > 0); // Include cards with score 0 (they have history), but must have stars
-      
-      // Sort by expected score per star (highest first)
+
+        const mult = FantasyDeckBuilder.RARITY_MULTIPLIER[card.rarity ?? 4] ?? 1;
+        const effectiveScore = score * mult;
+        const scoreperstar = card.stars > 0 ? effectiveScore / card.stars : 0;
+        return { ...card, expectedScore: effectiveScore, expectedScorePerStar: scoreperstar };
+      }).filter(card => card !== null && card.expectedScore >= 0 && card.stars > 0);
+
+      const getRarity = (c) => (c.rarity ?? 4);
+      if (tournament === 'bronze') {
+        scoredCards = scoredCards.filter(c => getRarity(c) === 4);
+      } else if (tournament === 'silver') {
+        scoredCards = scoredCards.filter(c => getRarity(c) === 4 || getRarity(c) === 3);
+      } else if (tournament === 'gold') {
+        scoredCards = scoredCards.filter(c => getRarity(c) === 4 || getRarity(c) === 3 || getRarity(c) === 2);
+      }
+
       scoredCards.sort((a, b) => b.expectedScorePerStar - a.expectedScorePerStar);
-      
-      // Debug: log card stars distribution
       if (FantasyDeckBuilder.DEBUG) {
         const starCounts = {};
-        scoredCards.forEach(card => {
-          starCounts[card.stars] = (starCounts[card.stars] || 0) + 1;
-        });
+        scoredCards.forEach(card => { starCounts[card.stars] = (starCounts[card.stars] || 0) + 1; });
         console.log('📊 Card stars distribution:', starCounts);
       }
       
@@ -1077,18 +1180,31 @@ class FantasyDeckBuilder {
     prunedCards.sort((a, b) => b.expectedScorePerStar - a.expectedScorePerStar);
     
     console.log(`✂️ Pruned to ${prunedCards.length} cards (top ${TOP_PER_BUCKET} per star bucket from ${scoredCards.length} total)`);
-    
     if (FantasyDeckBuilder.DEBUG) {
-      console.log('📈 Top 10 pruned cards by expected score per star:');
+      console.log('📈 Top 10 pruned:');
       prunedCards.slice(0, 10).forEach((card, i) => {
-        console.log(`  ${i + 1}. ${card.name} (${card.stars}⭐) = ${card.expectedScorePerStar.toFixed(1)} per star`);
+        console.log(`  ${i + 1}. ${card.name} (${card.stars}⭐) = ${card.expectedScorePerStar.toFixed(1)}/star`);
       });
     }
 
-    // Use dynamic programming to find best combination
-    console.log(`🔍 Finding best ${targetCount}-card combination totaling ${targetStars}⭐...`);
-    const result = this.findOptimalCombination(prunedCards, targetStars, targetCount);
-    
+    // Group by hero so we pick at most one card per hero (no same hero in different rarities)
+    const byHero = new Map();
+    prunedCards.forEach(card => {
+      const k = (card.heroKey || card.handle || card.name).toUpperCase();
+      if (!byHero.has(k)) byHero.set(k, []);
+      byHero.get(k).push(card);
+    });
+    const heroGroups = [];
+    byHero.forEach(cards => {
+      cards.sort((a, b) => (b.expectedScore ?? 0) - (a.expectedScore ?? 0));
+      heroGroups.push(cards);
+    });
+    console.log(`👥 ${heroGroups.length} unique heroes in pruned set`);
+
+    // Use dynamic programming to find best combination (with tournament rarity limits, one card per hero)
+    console.log(`🔍 Finding best ${targetCount}-card combination ≤${targetStars}⭐ (${tournament})...`);
+    const result = this.findOptimalCombination(heroGroups, targetStars, targetCount, { maxRares, maxEpics, maxLegendaries });
+
     return result;
   }
 
@@ -1111,57 +1227,56 @@ class FantasyDeckBuilder {
     return Object.keys(calculatedScores).length;
   }
 
-  // DP: maximize total expected score over 5-card combinations that sum to exactly targetStars
-  // Input cards is already pruned (top 5 per star bucket); we consider all of them.
-  findOptimalCombination(cards, targetStars, targetCount) {
+  // DP: maximize total expected score over 5-card combinations with total stars ≤ targetStars.
+  // heroGroups = array of card arrays (one per hero); we pick at most one card per hero.
+  // Optional rarity limits: maxRares, maxEpics, maxLegendaries (1=Legendary, 2=Epic, 3=Rare, 4=Common)
+  findOptimalCombination(heroGroups, targetStars, targetCount, rarityLimits = {}) {
+    const { maxRares = Infinity, maxEpics = Infinity, maxLegendaries = Infinity } = rarityLimits;
     const startTime = performance.now();
-    console.log(`🎯 DP Search: ${targetCount} cards, ${targetStars}⭐ target from ${cards.length} options (maximizing expected score)`);
-
-    const sortedStarsFromIndex = [];
-    for (let i = 0; i < cards.length; i++) {
-      const stars = cards.slice(i).map(c => c.stars).sort((a, b) => a - b);
-      sortedStarsFromIndex.push(stars);
-    }
+    const limitsStr = maxRares < Infinity || maxEpics < Infinity || maxLegendaries < Infinity
+      ? ` (max rare=${maxRares} epic=${maxEpics} leg=${maxLegendaries})`
+      : '';
+    console.log(`🎯 DP Search: ${targetCount} cards, ≤${targetStars}⭐ from ${heroGroups.length} heroes (one per hero)${limitsStr}`);
 
     const memo = new Map();
     let memoHits = 0;
     let memoMisses = 0;
 
-    // Returns { selection: card[], totalScore: number } or null; we maximize totalScore
-    const solve = (index, remainingStars, remainingCards) => {
-      if (remainingCards === 0 && remainingStars === 0) {
+    const solve = (groupIndex, starBudget, remainingCards, raresUsed, epicsUsed, legendariesUsed) => {
+      if (remainingCards === 0) {
         return { selection: [], totalScore: 0 };
       }
-      if (remainingCards === 0 || index >= cards.length || remainingStars < 0) {
+      if (groupIndex >= heroGroups.length || starBudget < 0) {
         return null;
       }
 
-      const sorted = sortedStarsFromIndex[index];
-      const k = remainingCards;
-      if (k > sorted.length) return null;
-      const minPossible = sorted.slice(0, k).reduce((a, b) => a + b, 0);
-      const maxPossible = sorted.slice(-k).reduce((a, b) => a + b, 0);
-      if (remainingStars < minPossible || remainingStars > maxPossible) return null;
-
-      const key = `${index},${remainingStars},${remainingCards}`;
+      const key = `${groupIndex},${starBudget},${remainingCards},${raresUsed},${epicsUsed},${legendariesUsed}`;
       if (memo.has(key)) {
         memoHits++;
         return memo.get(key);
       }
       memoMisses++;
 
-      const card = cards[index];
+      const group = heroGroups[groupIndex];
       let best = null;
 
-      if (card.stars <= remainingStars && card.cardId) {
-        const sub = solve(index + 1, remainingStars - card.stars, remainingCards - 1);
+      for (const card of group) {
+        if (!card.cardId || card.stars > starBudget) continue;
+        const rarity = card.rarity ?? 4;
+        const wouldBeRares = rarity === 3 ? raresUsed + 1 : raresUsed;
+        const wouldBeEpics = rarity === 2 ? epicsUsed + 1 : epicsUsed;
+        const wouldBeLegs = rarity === 1 ? legendariesUsed + 1 : legendariesUsed;
+        if (wouldBeRares > maxRares || wouldBeEpics > maxEpics || wouldBeLegs > maxLegendaries) continue;
+        const sub = solve(groupIndex + 1, starBudget - card.stars, remainingCards - 1, wouldBeRares, wouldBeEpics, wouldBeLegs);
         if (sub) {
           const totalScore = (card.expectedScore ?? 0) + sub.totalScore;
-          best = { selection: [card, ...sub.selection], totalScore };
+          if (!best || totalScore > best.totalScore) {
+            best = { selection: [card, ...sub.selection], totalScore };
+          }
         }
       }
 
-      const skip = solve(index + 1, remainingStars, remainingCards);
+      const skip = solve(groupIndex + 1, starBudget, remainingCards, raresUsed, epicsUsed, legendariesUsed);
       if (skip && (!best || skip.totalScore > best.totalScore)) {
         best = skip;
       }
@@ -1170,23 +1285,8 @@ class FantasyDeckBuilder {
       return best;
     };
 
-    let bestResult = solve(0, targetStars, targetCount);
+    const bestResult = solve(0, targetStars, targetCount, 0, 0, 0);
     let result = bestResult ? bestResult.selection : null;
-
-    if (!result) {
-      console.log('⚠️ No exact combination found, trying under target...');
-      for (let adjustment = 1; adjustment <= 2; adjustment++) {
-        const adjustedTarget = targetStars - adjustment;
-        if (adjustedTarget < 0) break;
-        const under = solve(0, adjustedTarget, targetCount);
-        if (under) {
-          result = under.selection;
-          const actualStars = result.reduce((sum, c) => sum + c.stars, 0);
-          console.log(`✓ Best under target: ${actualStars}⭐ (expected score: ${under.totalScore.toFixed(0)})`);
-          break;
-        }
-      }
-    }
 
     if (result) {
       const actualStars = result.reduce((sum, c) => sum + c.stars, 0);
@@ -1194,8 +1294,9 @@ class FantasyDeckBuilder {
       if (actualStars > targetStars) {
         console.error(`❌ Result exceeds hard cap! ${actualStars}⭐ > ${targetStars}⭐ - rejecting`);
         result = null;
-      } else if (FantasyDeckBuilder.DEBUG) {
-        console.log(`✓ Best deck: ${actualStars}⭐ total expected score ${totalExpected.toFixed(0)}`);
+      } else {
+        const rarities = result.map(c => FantasyDeckBuilder.RARITY_LABEL[c.rarity ?? 4] || 'Common').join(', ');
+        console.log(`✓ Best deck: ${actualStars}⭐ (expected score: ${totalExpected.toFixed(0)}) rarities: [${rarities}]`);
       }
     }
 
@@ -1206,17 +1307,20 @@ class FantasyDeckBuilder {
 
     if (!result) {
       console.log('⚠️ Still no match, using greedy by expected score...');
-      result = this.findClosestCombination(cards, targetStars, targetCount);
+      const flatCards = heroGroups.flat();
+      result = this.findClosestCombination(flatCards, targetStars, targetCount, rarityLimits);
     }
 
     return result;
   }
 
-  findClosestCombination(cards, targetStars, targetCount) {
-    console.log(`🎲 Greedy fallback: pick ${targetCount} cards ≤${targetStars}⭐ maximizing expected score`);
+  findClosestCombination(cards, targetStars, targetCount, rarityLimits = {}) {
+    const { maxRares = Infinity, maxEpics = Infinity, maxLegendaries = Infinity } = rarityLimits;
+    console.log(`🎲 Greedy fallback: pick ${targetCount} cards ≤${targetStars}⭐ maximizing expected score (one per hero)`);
     const selected = [];
     let totalStars = 0;
-    const usedCardIds = new Set();
+    let raresUsed = 0, epicsUsed = 0, legendariesUsed = 0;
+    const usedHeroKeys = new Set();
     const consider = Math.min(cards.length, 120);
 
     for (let slot = 0; slot < targetCount; slot++) {
@@ -1228,9 +1332,16 @@ class FantasyDeckBuilder {
 
       for (let j = 0; j < consider; j++) {
         const card = cards[j];
-        if (card.cardId && usedCardIds.has(card.cardId)) continue;
+        const heroKey = (card.heroKey || card.handle || card.name).toUpperCase();
+        if (usedHeroKeys.has(heroKey)) continue;
         const newTotal = totalStars + card.stars;
         if (newTotal > targetStars) continue;
+
+        const rarity = card.rarity ?? 4;
+        const wouldRares = rarity === 3 ? raresUsed + 1 : raresUsed;
+        const wouldEpics = rarity === 2 ? epicsUsed + 1 : epicsUsed;
+        const wouldLegs = rarity === 1 ? legendariesUsed + 1 : legendariesUsed;
+        if (wouldRares > maxRares || wouldEpics > maxEpics || wouldLegs > maxLegendaries) continue;
 
         const starDiff = cardsRemaining === 0 ? Math.abs(targetStars - newTotal) : 0;
         const expectedScore = card.expectedScore ?? 0;
@@ -1246,8 +1357,11 @@ class FantasyDeckBuilder {
       if (bestCard) {
         selected.push(bestCard);
         totalStars += bestCard.stars;
-        if (bestCard.cardId) usedCardIds.add(bestCard.cardId);
-        console.log(`  ${selected.length}. ${bestCard.name} (${bestCard.stars}⭐) exp=${(bestCard.expectedScore ?? 0).toFixed(0)} [cardId: ${bestCard.cardId}] → ${totalStars}⭐`);
+        const r = bestCard.rarity ?? 4;
+        if (r === 3) raresUsed++; else if (r === 2) epicsUsed++; else if (r === 1) legendariesUsed++;
+        usedHeroKeys.add((bestCard.heroKey || bestCard.handle || bestCard.name).toUpperCase());
+        const rLabel = FantasyDeckBuilder.RARITY_LABEL[r] || 'Common';
+        console.log(`  ${selected.length}. ${bestCard.name} (${bestCard.stars}⭐ ${rLabel}) exp=${(bestCard.expectedScore ?? 0).toFixed(0)} [cardId: ${bestCard.cardId}] → ${totalStars}⭐`);
       } else {
         console.warn(`⚠️ No card fits for slot ${slot + 1}`);
         break;
@@ -1319,18 +1433,31 @@ class FantasyDeckBuilder {
   }
 
   async clearDeck() {
-    const deckArea = document.querySelector('[class*="deck"]');
-    if (!deckArea) {
-      console.log('[clearDeck] No deck area found');
+    const rotateLeft = document.querySelector('button[aria-label="rotate left"]');
+    if (rotateLeft) {
+      rotateLeft.click();
+      await this.sleep(200);
+      console.log('[clearDeck] Clicked rotate left (clears all 5 at once)');
       return;
     }
-    const cardSelector = '[class*="card"], button, [role="button"]';
-    const selectedCards = deckArea.querySelectorAll(cardSelector);
-    for (const card of selectedCards) {
-      card.click();
-      await this.sleep(100);
+    const deckArea = document.querySelector('[class*="deck"]');
+    if (!deckArea) {
+      console.log('[clearDeck] No rotate left or deck area found');
+      return;
     }
-    console.log(`[clearDeck] Cleared ${selectedCards.length} cards`);
+    // Without rotate left: must click each of the 5 slots (cross or card) one by one
+    for (let i = 0; i < 5; i++) {
+      const cross = deckArea.querySelector('button[aria-label="cross"]');
+      const card = deckArea.querySelector('img[alt*="card"]');
+      const el = cross || card;
+      if (el) {
+        el.click();
+        await this.sleep(120);
+      } else {
+        break;
+      }
+    }
+    console.log('[clearDeck] Clicked up to 5 cross/card elements (one per slot)');
   }
 
   sleep(ms) {

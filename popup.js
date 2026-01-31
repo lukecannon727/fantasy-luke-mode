@@ -118,7 +118,14 @@ async function updateCacheInfo() {
 let allHeroOptions = []; // Store all hero options for filtering
 let currentOverrides = {};
 let selectedIndex = -1;
-let sortColumn = 'heroKey'; // 'heroKey' or 'score'
+
+function validateOverrideScore(score) {
+  if (typeof score !== 'number' || score < 0 || score > 1000) {
+    throw new Error('Score override must be between 0 and 1000 (inclusive)');
+  }
+}
+
+let sortColumn = 'heroKey'; // 'heroKey' | 'stars' | 'score' | 'scorePerStar'
 let sortDirection = 'asc'; // 'asc' or 'desc'
 
 function populateHeroList(cardData, calculatedScores = {}) {
@@ -144,10 +151,12 @@ function populateHeroList(cardData, calculatedScores = {}) {
       score = makesyExpectedScore(stars, currentOverrides['0XMAKESY']);
     }
     
+    const scorePerStar = (stars > 0 && score !== undefined) ? score / stars : undefined;
     return {
       heroKey: heroKey,
       score: score,
-      stars: stars
+      stars: stars,
+      scorePerStar: scorePerStar
     };
   });
   
@@ -167,15 +176,19 @@ function populateHeroList(cardData, calculatedScores = {}) {
 function sortHeroes(heroes) {
   return [...heroes].sort((a, b) => {
     let comparison = 0;
-    
     if (sortColumn === 'heroKey') {
       comparison = a.heroKey.localeCompare(b.heroKey);
+    } else if (sortColumn === 'stars') {
+      comparison = (a.stars || 0) - (b.stars || 0);
     } else if (sortColumn === 'score') {
       const scoreA = a.score !== undefined ? a.score : -Infinity;
       const scoreB = b.score !== undefined ? b.score : -Infinity;
       comparison = scoreA - scoreB;
+    } else if (sortColumn === 'scorePerStar') {
+      const aVal = a.scorePerStar !== undefined ? a.scorePerStar : -Infinity;
+      const bVal = b.scorePerStar !== undefined ? b.scorePerStar : -Infinity;
+      comparison = aVal - bVal;
     }
-    
     return sortDirection === 'asc' ? comparison : -comparison;
   });
 }
@@ -208,43 +221,28 @@ function updateHeroListFilter(searchText) {
     const header = document.createElement('div');
     header.className = 'hero-dropdown-header';
     
-    const heroKeyHeader = document.createElement('button');
-    heroKeyHeader.className = `hero-dropdown-header-item ${sortColumn === 'heroKey' ? 'active' : 'inactive'}`;
-    heroKeyHeader.title = 'Sort by hero name';
-    const heroSortIndicator = sortColumn === 'heroKey' ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ' ⇅';
-    heroKeyHeader.textContent = `Hero${heroSortIndicator}`;
-    
-    const scoreHeader = document.createElement('button');
-    scoreHeader.className = `hero-dropdown-header-item ${sortColumn === 'score' ? 'active' : 'inactive'}`;
-    scoreHeader.title = 'Sort by expected score';
-    const scoreSortIndicator = sortColumn === 'score' ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ' ⇅';
-    scoreHeader.textContent = `Expected Score${scoreSortIndicator}`;
-    
-    // Add click handlers
-    heroKeyHeader.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (sortColumn === 'heroKey') {
-        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-      } else {
-        sortColumn = 'heroKey';
-        sortDirection = 'asc';
-      }
-      updateHeroListFilter(searchText);
-    });
-    
-    scoreHeader.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (sortColumn === 'score') {
-        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-      } else {
-        sortColumn = 'score';
-        sortDirection = 'desc'; // Default to descending for scores (highest first)
-      }
-      updateHeroListFilter(searchText);
-    });
-    
-    header.appendChild(heroKeyHeader);
-    header.appendChild(scoreHeader);
+    const makeHeader = (col, label, title, defaultDir = 'asc') => {
+      const btn = document.createElement('button');
+      btn.className = `hero-dropdown-header-item ${sortColumn === col ? 'active' : 'inactive'}`;
+      btn.title = title;
+      const ind = sortColumn === col ? (sortDirection === 'asc' ? ' ↑' : ' ↓') : ' ⇅';
+      btn.textContent = `${label}${ind}`;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (sortColumn === col) {
+          sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortColumn = col;
+          sortDirection = defaultDir;
+        }
+        updateHeroListFilter(searchText);
+      });
+      return btn;
+    };
+    header.appendChild(makeHeader('stars', 'Stars', 'Sort by stars', 'desc'));
+    header.appendChild(makeHeader('heroKey', 'Hero', 'Sort by hero name', 'asc'));
+    header.appendChild(makeHeader('score', 'Score', 'Sort by expected score', 'desc'));
+    header.appendChild(makeHeader('scorePerStar', 'Exp/⭐', 'Sort by expected score per star', 'desc'));
     dropdown.appendChild(header);
     
     // Add all filtered items (scrollable)
@@ -254,25 +252,36 @@ function updateHeroListFilter(searchText) {
       item.dataset.heroKey = hero.heroKey;
       item.dataset.index = index;
       
+      const starsSpan = document.createElement('span');
+      starsSpan.className = 'hero-dropdown-score';
+      starsSpan.textContent = hero.stars ? `${hero.stars}⭐` : '—';
+      if (!hero.stars) starsSpan.style.color = '#808080';
+      item.appendChild(starsSpan);
       const nameSpan = document.createElement('span');
       nameSpan.className = 'hero-dropdown-name';
-      const starsText = hero.stars ? `${hero.stars}⭐ ` : '';
-      nameSpan.textContent = `${starsText}${hero.heroKey}`;
-      
+      nameSpan.textContent = hero.heroKey;
+      item.appendChild(nameSpan);
       const scoreSpan = document.createElement('span');
       scoreSpan.className = 'hero-dropdown-score';
       if (hero.heroKey === '0XMAKESY') {
         const makesyScore = makesyExpectedScore(hero.stars, currentOverrides['0XMAKESY']);
-        scoreSpan.textContent = makesyScore.toFixed(0);
+        scoreSpan.textContent = makesyScore !== undefined ? makesyScore.toFixed(0) : '—';
       } else if (hero.score !== undefined) {
         scoreSpan.textContent = hero.score.toFixed(0);
       } else {
         scoreSpan.textContent = '—';
         scoreSpan.style.color = '#808080';
       }
-      
-      item.appendChild(nameSpan);
       item.appendChild(scoreSpan);
+      const perStarSpan = document.createElement('span');
+      perStarSpan.className = 'hero-dropdown-score';
+      if (hero.scorePerStar !== undefined) {
+        perStarSpan.textContent = String(Math.round(hero.scorePerStar));
+      } else {
+        perStarSpan.textContent = '—';
+        perStarSpan.style.color = '#808080';
+      }
+      item.appendChild(perStarSpan);
       
       item.addEventListener('click', () => {
         selectHero(hero.heroKey);
@@ -333,15 +342,20 @@ async function renderOverrides() {
       const newScore = prompt('Enter new score for 0XMAKESY (or leave blank to use calculated score):', '');
       if (newScore !== null && newScore !== '') {
         const parsedScore = parseInt(newScore);
-        if (!isNaN(parsedScore) && parsedScore >= 0) {
+        if (isNaN(parsedScore)) {
+          alert('Please enter a valid number');
+          return;
+        }
+        try {
+          validateOverrideScore(parsedScore);
           currentOverrides['0XMAKESY'] = parsedScore;
           await renderOverrides();
           const res = await chrome.storage.local.get(['lastConfig']);
           const config = res.lastConfig || { algorithm: 'exponentialSmoothing', scoreOverrides: {} };
           config.scoreOverrides = currentOverrides;
           await chrome.storage.local.set({ lastConfig: config });
-        } else {
-          alert('Please enter a valid score (0 or higher)');
+        } catch (e) {
+          alert(e.message);
         }
       }
     };
@@ -383,11 +397,14 @@ async function renderOverrides() {
       const newScore = prompt(`Enter new score for ${hero}:`, score);
       if (newScore !== null) {
         const parsedScore = parseInt(newScore);
-        if (!isNaN(parsedScore) && parsedScore >= 0) {
+        if (isNaN(parsedScore)) {
+          alert('Please enter a valid number');
+          return;
+        }
+        try {
+          validateOverrideScore(parsedScore);
           currentOverrides[hero] = parsedScore;
           await renderOverrides();
-          
-          // Save overrides
           const result = await chrome.storage.local.get(['lastConfig']);
           const config = result.lastConfig || {
             algorithm: 'exponentialSmoothing',
@@ -395,8 +412,8 @@ async function renderOverrides() {
           };
           config.scoreOverrides = currentOverrides;
           await chrome.storage.local.set({ lastConfig: config });
-        } else {
-          alert('Please enter a valid score (0 or higher)');
+        } catch (e) {
+          alert(e.message);
         }
       }
     };
@@ -504,11 +521,17 @@ document.getElementById('addOverride').addEventListener('click', async () => {
     return;
   }
   
-  if (isNaN(score) || score < 0) {
-    alert('Please enter a valid score (0 or higher)');
+  if (isNaN(score)) {
+    alert('Please enter a valid number');
     return;
   }
-  
+  try {
+    validateOverrideScore(score);
+  } catch (e) {
+    alert(e.message);
+    return;
+  }
+
   currentOverrides[hero] = score;
   await renderOverrides();
   
@@ -615,14 +638,17 @@ function makesyExpectedScore(stars, userOverride) {
 chrome.storage.local.get(['lastConfig'], async (result) => {
   if (result.lastConfig) {
     const config = result.lastConfig;
+    document.getElementById('tournament').value = config.tournament || 'bronze';
     document.getElementById('algorithm').value = config.algorithm || 'exponentialSmoothing';
     currentOverrides = { ...(config.scoreOverrides || {}) };
     await renderOverrides();
   } else {
+    document.getElementById('tournament').value = 'bronze';
     document.getElementById('algorithm').value = 'exponentialSmoothing';
     currentOverrides = { '0XMAKESY': DEFAULT_MAKESY_1STAR };
     await chrome.storage.local.set({
       lastConfig: {
+        tournament: 'bronze',
         algorithm: 'exponentialSmoothing',
         scoreOverrides: currentOverrides
       }
@@ -631,17 +657,21 @@ chrome.storage.local.get(['lastConfig'], async (result) => {
   }
 });
 
-// Auto-calculate scores when algorithm changes
+// Save config when tournament or algorithm changes
+function saveConfigFromForm() {
+  return chrome.storage.local.get(['lastConfig']).then(result => {
+    const config = result.lastConfig || { tournament: 'bronze', algorithm: 'exponentialSmoothing', scoreOverrides: {} };
+    config.tournament = document.getElementById('tournament').value;
+    config.algorithm = document.getElementById('algorithm').value;
+    config.scoreOverrides = currentOverrides;
+    return chrome.storage.local.set({ lastConfig: config });
+  });
+}
+
+document.getElementById('tournament').addEventListener('change', saveConfigFromForm);
+
 document.getElementById('algorithm').addEventListener('change', async () => {
-  // Save the new algorithm selection
-  const result = await chrome.storage.local.get(['lastConfig']);
-  const config = result.lastConfig || {
-    algorithm: 'exponentialSmoothing',
-    scoreOverrides: {}
-  };
-  config.algorithm = document.getElementById('algorithm').value;
-  config.scoreOverrides = currentOverrides; // Preserve overrides
-  await chrome.storage.local.set({ lastConfig: config });
+  await saveConfigFromForm();
   
   // Automatically recalculate scores
   const status = document.getElementById('status');
@@ -737,6 +767,7 @@ document.getElementById('buildDeck').addEventListener('click', async () => {
   status.classList.remove('hidden');
 
   const config = {
+    tournament: document.getElementById('tournament').value,
     algorithm: document.getElementById('algorithm').value,
     scoreOverrides: currentOverrides
   };
@@ -767,7 +798,14 @@ document.getElementById('buildDeck').addEventListener('click', async () => {
 
     if (response.success) {
       status.className = 'status success';
-      status.textContent = `✓ Deck built! ${response.cards.length} cards selected (${response.totalStars} stars)`;
+      const RARITY_LABEL = { 1: 'Leg', 2: 'Epic', 3: 'Rare', 4: '' };
+      const deckLine = (response.cards || []).map(c => {
+        const score = (c.expectedScore ?? 0).toFixed(0);
+        const label = RARITY_LABEL[c.rarity ?? 4] || '';
+        return `${c.name} (${score}${label ? ' ' + label : ''})`;
+      }).join(', ');
+      const totalExp = response.totalExpected != null ? response.totalExpected.toFixed(0) : '—';
+      status.textContent = `✓ Deck built! ${response.cards.length} cards (${response.totalStars}⭐). ${deckLine}. Total expected: ${totalExp}`;
       
       // Save config for next time
       chrome.storage.local.set({ lastConfig: config });

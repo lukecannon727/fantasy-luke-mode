@@ -87,6 +87,7 @@
     .get-started-row .step-text { flex: 1; }
     .get-started-step1 { margin-bottom: 4px; }
     .step1-subline { font-size: 11px; color: #888; margin-top: 2px; margin-left: 0; }
+    .step3-subline { font-size: 11px; color: #888; margin-top: 2px; margin-left: 0; }
     .btn-verify {
       flex-shrink: 0;
       padding: 6px 12px;
@@ -310,7 +311,9 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     }
     .hero-dropdown-header {
-      display: flex;
+      display: grid;
+      grid-template-columns: 42px 1fr 52px 48px;
+      gap: 8px;
       padding: 8px 10px;
       background: #252525;
       border-bottom: 1px solid #333;
@@ -326,22 +329,28 @@
       color: inherit;
       cursor: pointer;
       padding: 0;
+      text-align: left;
     }
+    .hero-dropdown-header-item:nth-child(1),
+    .hero-dropdown-header-item:nth-child(3),
+    .hero-dropdown-header-item:nth-child(4) { text-align: right; }
     .hero-dropdown-header-item.active { color: #7cff00; }
     .hero-dropdown-item {
-      display: flex;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: 42px 1fr 52px 48px;
+      gap: 8px;
       align-items: center;
       padding: 8px 10px;
       cursor: pointer;
       border-bottom: 1px solid #252525;
       font-size: 12px;
     }
+    .hero-dropdown-item > span:not(.hero-dropdown-name) { text-align: right; }
     .hero-dropdown-item:hover { background: #252525; }
     .hero-dropdown-item.selected { background: #2a2a2a; }
     .hero-dropdown.hidden { display: none; }
-    .hero-dropdown-name { flex: 1; }
-    .hero-dropdown-score { color: #7cff00; font-weight: 500; margin-left: 8px; }
+    .hero-dropdown-name { min-width: 0; }
+    .hero-dropdown-score { color: #7cff00; font-weight: 500; }
     .dropdown-wrap { position: relative; }
 
     /* Status message */
@@ -379,6 +388,7 @@
         <span class="step-text">3. Start building decks</span>
         <button id="buildDeck" class="btn-wand" title="Build deck" aria-label="Build deck"></button>
       </div>
+      <div class="step3-subline">Refresh the fantasy page if the green button doesn't appear.</div>
     </section>
 
     <div id="status" class="hidden"></div>
@@ -392,6 +402,16 @@
           <button id="refreshData" class="btn-refresh" title="Refresh data">↻</button>
         </div>
         <div id="cacheInfo" class="data-row-line2">loading…</div>
+      </div>
+      <div class="field">
+        <label for="tournament">Tournament</label>
+        <select id="tournament">
+          <option value="bronze">Bronze (19⭐ common-only)</option>
+          <option value="silver">Silver (23⭐ up to 3 rares)</option>
+          <option value="gold">Gold (25⭐ up to 2 epics)</option>
+          <option value="platinum">Platinum (27⭐ up to 3 epics, 1 legendary)</option>
+          <option value="diamond">Diamond (unlimited)</option>
+        </select>
       </div>
       <div class="field">
         <label for="algorithm">Choose scoring algorithm</label>
