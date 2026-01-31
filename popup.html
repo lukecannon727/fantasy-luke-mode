@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      width: 360px;
+      min-height: 320px;
+      padding: 0;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #141414;
+      color: #e5e5e5;
+      font-size: 13px;
+    }
+
+    /* Header: title + status */
+    .popup-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      background: #1a1a1a;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    .popup-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #7cff00;
+      margin: 0;
+    }
+    .status-pill {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-pill.active { background: #1a3d1a; color: #7cff00; }
+    .status-pill.verify { background: #3d2a1a; color: #ffb366; }
+    .status-pill.error { background: #3d1a1a; color: #ff6b6b; }
+    .status-pill.info { background: #1a2a3d; color: #6bb6ff; }
+
+    /* Main content */
+    .popup-body { padding: 16px; padding-bottom: 24px; }
+
+    /* Footer */
+    .popup-footer {
+      margin-top: 20px;
+      padding-top: 14px;
+      border-top: 1px solid #2a2a2a;
+      font-size: 11px;
+      color: #666;
+    }
+    .popup-footer a {
+      color: #7cff00;
+      text-decoration: none;
+    }
+    .popup-footer a:hover { text-decoration: underline; }
+
+    /* Get started: compact for returning users, clear for new */
+    .get-started {
+      background: #1e1e1e;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+    }
+    .get-started-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #888;
+      margin-bottom: 10px;
+    }
+    .get-started-steps { margin: 0; padding-left: 18px; line-height: 1.6; color: #b0b0b0; }
+    .get-started-steps li { margin-bottom: 4px; }
+    .get-started-steps .done { color: #7cff00; }
+    .get-started-step { margin: 8px 0 4px 0; line-height: 1.6; color: #b0b0b0; }
+    .get-started-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .get-started-row .step-text { flex: 1; }
+    .get-started-step1 { margin-bottom: 4px; }
+    .step1-subline { font-size: 11px; color: #888; margin-top: 2px; margin-left: 0; }
+    .btn-verify {
+      flex-shrink: 0;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #7cff00;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn-verify:hover { background: #6de000; }
+    .btn-verify:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+    /* Data row: prefix + refresh on line 1, status on line 2 */
+    .data-row {
+      padding: 2px 0 10px 0;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #2a2a2a;
+      font-size: 12px;
+      color: #888;
+    }
+    .data-row-line1 {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .data-row-line2 { margin-top: 1px; font-size: 12px; color: #888; }
+    .actions-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .actions-row button {
+      flex: 1;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: #7cff00;
+      color: #000;
+    }
+    .btn-primary:hover { background: #6de000; }
+    .btn-secondary {
+      background: #2a2a2a;
+      color: #e5e5e5;
+    }
+    .btn-secondary:hover { background: #353535; }
+    .btn-wand {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: 2px solid #7cff00;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #7cff00 0%, #5fd000 100%);
+      color: #000;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(124, 255, 0, 0.3);
+    }
+    .btn-wand::before {
+      content: '🪄';
+      font-size: 18px;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+    }
+    .btn-wand:hover {
+      background: linear-gradient(135deg, #8fff20 0%, #6de000 100%);
+      box-shadow: 0 4px 12px rgba(124, 255, 0, 0.5);
+      transform: translateY(-1px);
+    }
+    .btn-wand:active { transform: translateY(0); }
+    .btn-refresh {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: none;
+      border-radius: 50%;
+      background: #2a2a2a;
+      color: #e5e5e5;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-refresh:hover { background: #353535; }
+    .btn-refresh:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+    /* Settings section */
+    .settings-section {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #2a2a2a;
+    }
+    .settings-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #7cff00;
+      margin-bottom: 4px;
+    }
+    .field {
+      margin-bottom: 12px;
+    }
+    .field-override {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #2a2a2a;
+    }
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #b0b0b0;
+      margin-bottom: 4px;
+    }
+    select, input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 8px 10px;
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e5e5e5;
+      font-size: 13px;
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: #7cff00;
+    }
+    .override-add-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .override-add-row input[type="text"] { flex: 1; min-width: 0; }
+    .override-add-row input[type="number"] { width: 72px; }
+    .override-add-row input[type="number"]::-webkit-inner-spin-button,
+    .override-add-row input[type="number"]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .override-add-row input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+    .override-add-row button {
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #2a2a2a;
+      color: #e5e5e5;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .override-add-row button:hover { background: #353535; }
+    .override-helper {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 10px;
+    }
+    .override-list {
+      max-height: 180px;
+      overflow-y: auto;
+      background: #1a1a1a;
+      border-radius: 6px;
+      border: 1px solid #2a2a2a;
+      padding: 6px;
+    }
+    .override-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      margin-bottom: 4px;
+      background: #222;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .override-item:last-child { margin-bottom: 0; }
+    .override-hero { font-weight: 500; color: #7cff00; }
+    .override-score { color: #e5e5e5; margin-left: 6px; }
+    .override-score.blacklist { color: #ff6b6b; }
+    .override-buttons { display: flex; gap: 4px; }
+    .override-edit, .override-remove {
+      padding: 4px 8px;
+      font-size: 11px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .override-edit { background: #333; color: #e5e5e5; }
+    .override-remove { background: #4d2a2a; color: #ff8a8a; min-width: 24px; }
+    .override-remove:hover { background: #5d3232; }
+
+    /* Hero dropdown (unchanged behavior) */
+    #heroSearch:focus { border-color: #7cff00; }
+    .hero-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-top: none;
+      border-radius: 0 0 6px 6px;
+      max-height: 260px;
+      overflow-y: auto;
+      z-index: 100;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .hero-dropdown-header {
+      display: flex;
+      padding: 8px 10px;
+      background: #252525;
+      border-bottom: 1px solid #333;
+      position: sticky;
+      top: 0;
+      font-size: 11px;
+      font-weight: 600;
+      color: #888;
+    }
+    .hero-dropdown-header-item {
+      background: none;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      padding: 0;
+    }
+    .hero-dropdown-header-item.active { color: #7cff00; }
+    .hero-dropdown-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 10px;
+      cursor: pointer;
+      border-bottom: 1px solid #252525;
+      font-size: 12px;
+    }
+    .hero-dropdown-item:hover { background: #252525; }
+    .hero-dropdown-item.selected { background: #2a2a2a; }
+    .hero-dropdown.hidden { display: none; }
+    .hero-dropdown-name { flex: 1; }
+    .hero-dropdown-score { color: #7cff00; font-weight: 500; margin-left: 8px; }
+    .dropdown-wrap { position: relative; }
+
+    /* Status message */
+    #status {
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-top: 10px;
+    }
+    #status.hidden { display: none; }
+    #status.success { background: #1a3d1a; color: #7cff00; }
+    #status.error { background: #3d1a1a; color: #ff6b6b; }
+    #status.info { background: #1a2a3d; color: #6bb6ff; }
+  </style>
+</head>
+<body>
+  <header class="popup-header">
+    <h1 class="popup-title">Fantasy - Luke Mode</h1>
+    <div id="whitelistStatus" class="status-pill info">Checking…</div>
+  </header>
+
+  <div class="popup-body">
+    <!-- Get started: 3 steps + Verify -->
+    <section class="get-started">
+      <div class="get-started-title">Get started</div>
+      <div id="step1" class="get-started-step1">
+        <div class="get-started-row">
+          <span class="step-text">1. Verify you own a Luke Cannon hero card</span>
+          <button id="verifyButton" class="btn-verify">Verify</button>
+        </div>
+        <div class="step1-subline">Navigate to fantasy.top/player/0x… & click the Verify button</div>
+      </div>
+      <div id="step2" class="get-started-step">2. Go to deck builder (currently only supports bronze tournaments)</div>
+      <div id="step3" class="get-started-row">
+        <span class="step-text">3. Start building decks</span>
+        <button id="buildDeck" class="btn-wand" title="Build deck" aria-label="Build deck"></button>
+      </div>
+    </section>
+
+    <div id="status" class="hidden"></div>
+
+    <!-- Settings -->
+    <section class="settings-section">
+      <div class="settings-title">Settings</div>
+      <div class="data-row">
+        <div class="data-row-line1">
+          <span class="data-line-prefix">Historical data from Molt's Fantasy Sheets:</span>
+          <button id="refreshData" class="btn-refresh" title="Refresh data">↻</button>
+        </div>
+        <div id="cacheInfo" class="data-row-line2">loading…</div>
+      </div>
+      <div class="field">
+        <label for="algorithm">Choose scoring algorithm</label>
+        <select id="algorithm">
+          <option value="exponentialSmoothing" selected>Exponential smoothing (α=0.3)</option>
+          <option value="recent6weeks">Last 6 weeks average</option>
+          <option value="recent4weeks">Last 4 weeks average</option>
+          <option value="recent6exclude1">Last 6 weeks (exclude outlier)</option>
+          <option value="recent4exclude1">Last 4 weeks (exclude outlier)</option>
+          <option value="weighted">Weighted recent</option>
+          <option value="consistencyFloor">Consistency (floor)</option>
+          <option value="consistencyMedian">Consistency (median)</option>
+        </select>
+      </div>
+      <div class="field field-override">
+        <label>Override a hero's expected score</label>
+        <!-- <div class="override-helper">Search hero, set score, Add. Override replaces algorithm for that hero.</div> -->
+        <div class="dropdown-wrap">
+          <div class="override-add-row">
+            <input type="text" id="heroSearch" placeholder="Search hero…" autocomplete="off">
+            <input type="number" id="overrideScore" placeholder="Score" min="0" max="9999">
+            <button id="addOverride">Add</button>
+          </div>
+          <div id="heroDropdown" class="hero-dropdown hidden"></div>
+        </div>
+        <div id="overrideList" class="override-list"></div>
+      </div>
+    </section>
+
+    <footer class="popup-footer">
+      <a href="https://x.com/lukecannon727" target="_blank" rel="noopener noreferrer">DM @lukecannon727</a> with feedback or requests.
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

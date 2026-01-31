@@ -1,0 +1,94 @@
+/* Custom magic wand button injected into page */
+.fantasy-custom-wand {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #7cff00 0%, #5fd000 100%);
+  border: 2px solid #7cff00;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-left: 8px;
+  box-shadow: 0 2px 8px rgba(124, 255, 0, 0.3);
+}
+
+.fantasy-custom-wand:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(124, 255, 0, 0.5);
+  background: linear-gradient(135deg, #8fff20 0%, #6de000 100%);
+}
+
+.fantasy-custom-wand:active {
+  transform: translateY(0);
+}
+
+.fantasy-custom-wand::before {
+  content: '🪄';
+  font-size: 20px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.fantasy-custom-wand.loading {
+  pointer-events: none;
+  opacity: 0.6;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+/* Tooltip */
+.fantasy-custom-wand::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.9);
+  color: #7cff00;
+  font-size: 12px;
+  white-space: nowrap;
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  z-index: 1000;
+}
+
+.fantasy-custom-wand:hover::after {
+  opacity: 1;
+}
+
+/* Notification animations */
+@keyframes slideIn {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+}
