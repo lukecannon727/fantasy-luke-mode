@@ -3,7 +3,6 @@ async function updateWhitelistStatus() {
   const statusDiv = document.getElementById('whitelistStatus');
   const step1 = document.getElementById('step1');
   const step2 = document.getElementById('step2');
-  const step3 = document.getElementById('step3');
   const verifyButton = document.getElementById('verifyButton');
   
   const gray = '#b0b0b0';
@@ -14,11 +13,7 @@ async function updateWhitelistStatus() {
     if (sub) sub.style.color = color;
   }
   function setStep2(color, text) {
-    step2.style.color = color;
-    if (text) step2.textContent = text;
-  }
-  function setStep3(color, text) {
-    const el = step3.querySelector('.step-text');
+    const el = step2.querySelector('.step-text');
     if (el) {
       el.style.color = color;
       if (text) el.textContent = text;
@@ -32,7 +27,6 @@ async function updateWhitelistStatus() {
       statusDiv.textContent = 'Go to fantasy.top';
       setStep1(green);
       setStep2(gray);
-      setStep3(gray);
       verifyButton.disabled = true;
       return;
     }
@@ -54,7 +48,6 @@ async function updateWhitelistStatus() {
       statusDiv.textContent = 'Verify first';
       setStep1(green);
       setStep2(gray);
-      setStep3(gray);
       verifyButton.disabled = true;
       return;
     }
@@ -67,19 +60,16 @@ async function updateWhitelistStatus() {
 
       if (url.includes('/deckbuilder')) {
         setStep1(gray);
-        setStep2(gray);
-        setStep3(green);
+        setStep2(green);
       } else {
         setStep1(gray);
-        setStep2(green);
-        setStep3(gray);
+        setStep2(gray);
       }
     } else {
       statusDiv.className = 'status-pill verify';
       statusDiv.textContent = 'Verify';
       setStep1('#ff6b6b');
       setStep2(gray);
-      setStep3(gray);
       verifyButton.disabled = false;
       verifyButton.textContent = 'Verify';
     }
@@ -144,17 +134,14 @@ function populateHeroList(cardData, calculatedScores = {}) {
   const heroOptions = uniqueHeroKeys.map(heroKey => {
     const scoreData = calculatedScores[heroKey];
     const stars = heroStarsMap.get(heroKey) || 0;
-    
-    // 0XMAKESY: 1⭐ → override or 300, other stars → 0
-    let score = scoreData ? scoreData.score : undefined;
-    if (heroKey === '0XMAKESY') {
-      score = makesyExpectedScore(stars, currentOverrides['0XMAKESY']);
-    }
-    
+    const algorithmScore = heroKey === '0XMAKESY' ? makesyExpectedScore(stars, undefined) : (scoreData ? scoreData.score : undefined);
+    const hasOverride = currentOverrides.hasOwnProperty(heroKey);
+    const score = hasOverride ? currentOverrides[heroKey] : (heroKey === '0XMAKESY' ? makesyExpectedScore(stars, currentOverrides['0XMAKESY']) : algorithmScore);
     const scorePerStar = (stars > 0 && score !== undefined) ? score / stars : undefined;
     return {
       heroKey: heroKey,
       score: score,
+      algorithmScore: algorithmScore,
       stars: stars,
       scorePerStar: scorePerStar
     };
@@ -263,7 +250,11 @@ function updateHeroListFilter(searchText) {
       item.appendChild(nameSpan);
       const scoreSpan = document.createElement('span');
       scoreSpan.className = 'hero-dropdown-score';
-      if (hero.heroKey === '0XMAKESY') {
+      const overrideVal = currentOverrides[hero.heroKey];
+      if (overrideVal !== undefined) {
+        const alg = hero.algorithmScore !== undefined ? hero.algorithmScore.toFixed(0) : '—';
+        scoreSpan.innerHTML = `<span class="override-struck">${alg}</span> ${overrideVal.toFixed(0)}`;
+      } else if (hero.heroKey === '0XMAKESY') {
         const makesyScore = makesyExpectedScore(hero.stars, currentOverrides['0XMAKESY']);
         scoreSpan.textContent = makesyScore !== undefined ? makesyScore.toFixed(0) : '—';
       } else if (hero.score !== undefined) {
@@ -799,13 +790,13 @@ document.getElementById('buildDeck').addEventListener('click', async () => {
     if (response.success) {
       status.className = 'status success';
       const RARITY_LABEL = { 1: 'Leg', 2: 'Epic', 3: 'Rare', 4: '' };
-      const deckLine = (response.cards || []).map(c => {
+      const deckLines = (response.cards || []).map(c => {
         const score = (c.expectedScore ?? 0).toFixed(0);
         const label = RARITY_LABEL[c.rarity ?? 4] || '';
         return `${c.name} (${score}${label ? ' ' + label : ''})`;
-      }).join(', ');
+      }).join('\n');
       const totalExp = response.totalExpected != null ? response.totalExpected.toFixed(0) : '—';
-      status.textContent = `✓ Deck built! ${response.cards.length} cards (${response.totalStars}⭐). ${deckLine}. Total expected: ${totalExp}`;
+      status.textContent = `✓ Deck built! ${response.cards.length} cards (${response.totalStars}⭐). Total expected: ${totalExp}\n\n${deckLines}`;
       
       // Save config for next time
       chrome.storage.local.set({ lastConfig: config });

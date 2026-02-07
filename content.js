@@ -10,6 +10,7 @@ class FantasyDeckBuilder {
     this.CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
     this.buttonInjected = false; // Track if button was successfully injected
     this.injectionObserver = null; // MutationObserver for button injection
+    this.navObserver = null; // Long-lived observer to re-inject after SPA navigation
     
     // Performance caches for repeated deck building
     this.scoreCache = new Map(); // (heroKey + algorithm + configHash) -> score
@@ -57,6 +58,25 @@ class FantasyDeckBuilder {
     if (await this.isWhitelisted()) {
       this.injectCustomWandButton();
     }
+    this.startNavObserver();
+  }
+
+  // Long-lived observer: re-inject wand after SPA navigation (e.g. save deck → back to deck builder)
+  startNavObserver() {
+    if (this.navObserver) return;
+    let debounceTimer = null;
+    const check = async () => {
+      if (!window.location.href.includes('/deckbuilder')) return;
+      if (!(await this.isWhitelisted())) return;
+      if (document.getElementById('fantasy-custom-wand')) return;
+      this.injectCustomWandButton();
+    };
+    const debouncedCheck = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(check, 600);
+    };
+    this.navObserver = new MutationObserver(debouncedCheck);
+    this.navObserver.observe(document.body, { childList: true, subtree: true });
   }
   
   // Check if current address is whitelisted (or on deckbuilder with any whitelisted address)
@@ -187,10 +207,9 @@ class FantasyDeckBuilder {
         return;
       }
 
-      // Skip if button already exists
-      if (document.getElementById('fantasy-custom-wand') || this.buttonInjected) {
-        return;
-      }
+      // Skip only if button element exists (after SPA redirect DOM is replaced and button is gone)
+      if (document.getElementById('fantasy-custom-wand')) return;
+      if (this.buttonInjected) this.buttonInjected = false; // DOM was replaced, allow re-inject
 
       // Deck builder bar: div with max-w-3xl, bg-gray-900, rounded-3xl, gap-x-5 → button[aria-label="Magic Wand"] inside
       const bar = Array.from(document.querySelectorAll('div')).find(el => {
@@ -337,11 +356,11 @@ class FantasyDeckBuilder {
         console.log('👆 Selecting new cards...');
         await this.selectCards(bestDeck);
         
-        const deckLine = bestDeck.map(c => this._deckCardLine(c)).join(', ');
-        this.showNotification(`✅ Deck built! ${bestDeck.length} cards (${totalStars}⭐). ${deckLine}. Total expected: ${totalExpected.toFixed(0)}`, 'success', { persistent: true });
+        const deckLines = bestDeck.map(c => this._deckCardLine(c)).join('\n');
+        this.showNotification(`✅ Deck built! ${bestDeck.length} cards (${totalStars}⭐). Total expected: ${totalExpected.toFixed(0)}\n\n${deckLines}`, 'success', { persistent: true });
       } else {
-        const deckLine = bestDeck.map(c => this._deckCardLine(c)).join(', ');
-        this.showNotification(`✅ Optimal deck: ${bestDeck.length} cards (${totalStars}⭐). ${deckLine}. Total expected: ${totalExpected.toFixed(0)}`, 'success', { persistent: true });
+        const deckLines = bestDeck.map(c => this._deckCardLine(c)).join('\n');
+        this.showNotification(`✅ Optimal deck: ${bestDeck.length} cards (${totalStars}⭐). Total expected: ${totalExpected.toFixed(0)}\n\n${deckLines}`, 'success', { persistent: true });
       }
       
       console.log('🎉 Deck building complete!');
@@ -410,7 +429,7 @@ class FantasyDeckBuilder {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 14px;
       font-weight: 500;
-      white-space: normal;
+      white-space: pre-line;
       word-break: break-word;
       animation: slideIn 0.3s ease;
     `;

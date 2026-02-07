@@ -1,14 +1,15 @@
 // Background service worker
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
   console.log('Fantasy.top Deck Builder extension installed');
-  
-  // Set default configuration
-  chrome.storage.local.set({
-    lastConfig: {
-      algorithm: 'exponentialSmoothing',
-      scoreOverrides: {}
-    }
-  });
+  const existing = await chrome.storage.local.get(['lastConfig']);
+  if (!existing.lastConfig) {
+    chrome.storage.local.set({
+      lastConfig: {
+        algorithm: 'exponentialSmoothing',
+        scoreOverrides: {}
+      }
+    });
+  }
 });
 
 // Score calculation functions (moved from content.js)

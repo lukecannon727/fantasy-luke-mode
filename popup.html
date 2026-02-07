@@ -87,7 +87,7 @@
     .get-started-row .step-text { flex: 1; }
     .get-started-step1 { margin-bottom: 4px; }
     .step1-subline { font-size: 11px; color: #888; margin-top: 2px; margin-left: 0; }
-    .step3-subline { font-size: 11px; color: #888; margin-top: 2px; margin-left: 0; }
+    .step2-subline { font-size: 11px; color: #888; margin-top: 2px; margin-left: 0; }
     .btn-verify {
       flex-shrink: 0;
       padding: 6px 12px;
@@ -282,6 +282,7 @@
     .override-hero { font-weight: 500; color: #7cff00; }
     .override-score { color: #e5e5e5; margin-left: 6px; }
     .override-score.blacklist { color: #ff6b6b; }
+    .hero-dropdown-score .override-struck { color: #ff6b6b; text-decoration: line-through; margin-right: 4px; }
     .override-buttons { display: flex; gap: 4px; }
     .override-edit, .override-remove {
       padding: 4px 8px;
@@ -359,6 +360,7 @@
       border-radius: 6px;
       font-size: 12px;
       margin-top: 10px;
+      white-space: pre-line;
     }
     #status.hidden { display: none; }
     #status.success { background: #1a3d1a; color: #7cff00; }
@@ -378,17 +380,16 @@
       <div class="get-started-title">Get started</div>
       <div id="step1" class="get-started-step1">
         <div class="get-started-row">
-          <span class="step-text">1. Verify you own a Luke Cannon hero card</span>
+          <span class="step-text">1. Visit your Fantasy portfolio (fantasy.top/player/0x…) & click verify</span>
           <button id="verifyButton" class="btn-verify">Verify</button>
         </div>
-        <div class="step1-subline">Navigate to fantasy.top/player/0x… & click the Verify button</div>
+        <div class="step1-subline">(currently gated to Luke Cannon cardholders)</div>
       </div>
-      <div id="step2" class="get-started-step">2. Go to deck builder (currently only supports bronze tournaments)</div>
-      <div id="step3" class="get-started-row">
-        <span class="step-text">3. Start building decks</span>
+      <div id="step2" class="get-started-row">
+        <span class="step-text">2. Go to deck builder & start building!</span>
         <button id="buildDeck" class="btn-wand" title="Build deck" aria-label="Build deck"></button>
       </div>
-      <div class="step3-subline">Refresh the fantasy page if the green button doesn't appear.</div>
+      <div class="step2-subline">Refresh if the magic wand doesn't appear</div>
     </section>
 
     <div id="status" class="hidden"></div>
@@ -413,19 +414,6 @@
           <option value="diamond">Diamond (unlimited)</option>
         </select>
       </div>
-      <div class="field">
-        <label for="algorithm">Choose scoring algorithm</label>
-        <select id="algorithm">
-          <option value="exponentialSmoothing" selected>Exponential smoothing (α=0.3)</option>
-          <option value="recent6weeks">Last 6 weeks average</option>
-          <option value="recent4weeks">Last 4 weeks average</option>
-          <option value="recent6exclude1">Last 6 weeks (exclude outlier)</option>
-          <option value="recent4exclude1">Last 4 weeks (exclude outlier)</option>
-          <option value="weighted">Weighted recent</option>
-          <option value="consistencyFloor">Consistency (floor)</option>
-          <option value="consistencyMedian">Consistency (median)</option>
-        </select>
-      </div>
       <div class="field field-override">
         <label>Override a hero's expected score</label>
         <!-- <div class="override-helper">Search hero, set score, Add. Override replaces algorithm for that hero.</div> -->
@@ -438,6 +426,19 @@
           <div id="heroDropdown" class="hero-dropdown hidden"></div>
         </div>
         <div id="overrideList" class="override-list"></div>
+      </div>
+      <div class="field">
+        <label for="algorithm">Choose scoring algorithm</label>
+        <select id="algorithm">
+          <option value="exponentialSmoothing" selected>Exponential smoothing (α=0.3)</option>
+          <option value="recent6weeks">Last 6 weeks average</option>
+          <option value="recent4weeks">Last 4 weeks average</option>
+          <option value="recent6exclude1">Last 6 weeks (exclude outlier)</option>
+          <option value="recent4exclude1">Last 4 weeks (exclude outlier)</option>
+          <option value="weighted">Weighted recent</option>
+          <option value="consistencyFloor">Consistency (floor)</option>
+          <option value="consistencyMedian">Consistency (median)</option>
+        </select>
       </div>
     </section>
 
